@@ -43,9 +43,10 @@ class JwtServiceImpl(
             .withExpiresAt(Date(now + accessTokenTTL * 1000))
             .sign(algorithm)
         
-        // Create refresh token
+        // Create refresh token (also include username)
         val refreshTokenStr = JWT.create()
             .withSubject(user.id.toString())
+            .withClaim("username", user.username)
             .withIssuer(issuer)
             .withAudience(audience)
             .withIssuedAt(Date(now))
@@ -74,6 +75,9 @@ class JwtServiceImpl(
         val userId = decoded.subject.toLongOrNull()
             ?: throw IllegalArgumentException("Invalid token subject")
         
+        val username = decoded.getClaim("username").asString()
+            ?: throw IllegalArgumentException("Invalid token: missing username")
+        
         // Check if token exists in database
         val storedToken = tokenRepository.findByToken(refreshToken)
             ?: throw IllegalArgumentException("Refresh token not found or revoked")
@@ -87,16 +91,12 @@ class JwtServiceImpl(
         // Revoke old refresh token
         tokenRepository.revokeById(storedToken.id)
         
-        // Create new tokens for the user
-        val user = User(id = userId, username = decoded.getClaim("username").asString() ?: "", passwordHash = "")
-        
-        // Get username from access token or create minimal user object
         val now = System.currentTimeMillis()
         
         // Create new access token
         val accessToken = JWT.create()
             .withSubject(userId.toString())
-            .withClaim("username", decoded.getClaim("username")?.asString() ?: "")
+            .withClaim("username", username)
             .withIssuer(issuer)
             .withAudience(audience)
             .withIssuedAt(Date(now))
@@ -106,6 +106,7 @@ class JwtServiceImpl(
         // Create new refresh token
         val newRefreshTokenStr = JWT.create()
             .withSubject(userId.toString())
+            .withClaim("username", username)
             .withIssuer(issuer)
             .withAudience(audience)
             .withIssuedAt(Date(now))
